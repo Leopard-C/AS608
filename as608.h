@@ -34,7 +34,7 @@ typedef unsigned int uint;
 */
 int   g_fd;          // 全局变量，文件描述符，即open()函数打开串口的返回值
 int   g_detect_pin;  // 全局变量，GPIO引脚号，检测是模块上否有手指
-int   g_verbose;     // 全局变量，输出信息的详细程度 0 显示进度条  1 显示详细信息  其他则不显示
+int   g_verbose;     // 全局变量，输出信息的详细程度
 int   g_has_password;// 全局变量，是否设置了密码
 char  g_error_desc[128]; // 全局变量，错误代码的含义
 uchar g_error_code;      // 全局变量，模块返回的确认码，如果函数返回值不为true，读取此变量
@@ -43,7 +43,7 @@ uchar g_error_code;      // 全局变量，模块返回的确认码，如果函�
 
 
 /********************************BEGIN*******************************
- * 模块系统变量 (AS608模块的参数)
+ * 模块参数变量
 */
 uint PS_STATUS;        // 状态寄存器 0
 uint PS_MODEL;         // 传感器类型 0-15
