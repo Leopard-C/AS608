@@ -341,6 +341,10 @@ fp address 0xefefefef  # 前缀0x可省略
 fp setpwd 0xcc0825cc
 ```
 
+![usage-1](img/usage-1.png)
+
+![usage-2](img/usage-2.png)
+
 ## END
 
 <leopard.c@outlook.com>
