@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2019  Leopad-C
+  Copyright (c) 2019  Leopard-C
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
