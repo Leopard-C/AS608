@@ -31,15 +31,43 @@
 #include <wiringPi.h>
 #include <wiringSerial.h>
 
-extern int   g_fd;  // 文件描述符，open()串口的返回值
-extern int   g_detect_pin; // GPIO引脚号，检测是模块上否有手指
-extern bool  v_verbose;
-extern char  g_error_desc[128];
-extern uchar g_error_code;
+
+/*******************************BEGIN**********************************
+ * 全局变量
+*/
+int   g_fd;          // 全局变量，文件描述符，即open()函数打开串口的返回值
+int   g_detect_pin;  // 全局变量，GPIO引脚号，检测是模块上否有手指
+int   g_verbose;     // 全局变量，输出信息的详细程度
+int   g_has_password;// 全局变量，是否设置了密码
+char  g_error_desc[128]; // 全局变量，错误代码的含义
+uchar g_error_code;      // 全局变量，模块返回的确认码，如果函数返回值不为true，读取此变量
 
 uchar g_order[64] = { 0 }; // 发送给模块的指令包
 uchar g_reply[64] = { 0 }; // 模块的应答包 
 
+/*
+**********************************END********************************/
+
+
+/********************************BEGIN*******************************
+ * 模块参数变量
+*/
+uint PS_STATUS;        // 状态寄存器 0
+uint PS_MODEL;         // 传感器类型 0-15
+uint PS_CAPACITY;      // 指纹容量，300
+uint PS_LEVEL;         // 安全等级 1/2/3/4/5，默认为3
+uint PS_PACKET_SIZE;   // 数据包大小 32/64/128/256 bytes，默认为128
+uint PS_BAUD_RATE;     // 波特率系数 
+
+uint PS_CHIP_ADDR;      // 设备(芯片)地址
+uint PS_PASSWORD;       // 通信密码
+
+char PS_PRODUCT_SN[12];       // 产品型号
+char PS_SOFTWARE_VERSION[12]; // 软件版本号
+char PS_MANUFACTURER[12];     // 厂家名称
+char PS_SENSOR_NAME[12];      // 传感器名称
+/*
+ *********************************END*****************************/
 
 /******************************************************************************
  *
