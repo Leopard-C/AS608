@@ -61,7 +61,7 @@ void atExitFunc() {
   if (g_verbose == 1)
     printf("Exit\n");
   if (g_fd > 0)
-   serialClose(g_fd); 
+    serialClose(g_fd); 
 }
 
 
@@ -120,14 +120,14 @@ int main(int argc, char *argv[]) //int serialOpen (const char *device, const int
 
 // 打印配置文件内容到屏幕上
 void printConfig() {
-  printf("    address=%08x\n", g_config.address);
+  printf("address=%08x\n", g_config.address);
   if (g_config.has_password)
-    printf("   password=%08x\n", g_config.password);
+    printf("password=%08x\n", g_config.password);
   else
-    printf("   password=none(no password)\n");
+    printf("password=none(no password)\n");
   printf("serial_file=%s\n",   g_config.serial);
-  printf("   baudrate=%d\n",   g_config.baudrate);
-  printf(" detect_pin=%d\n",   g_config.detect_pin);
+  printf("baudrate=%d\n",   g_config.baudrate);
+  printf("detect_pin=%d\n",   g_config.detect_pin);
 }
 
 // 同步g_config变量内容和其他变量内容
@@ -202,7 +202,7 @@ bool readConfig() {
       g_config.address = toUInt(value+offset);
     }
     else if (strcmp(key, "password") == 0) {
-      if (strcmp(value, "none") || strcmp(value, "false")) {
+      if (strcmp(value, "none") == 0 || strcmp(value, "false") == 0) {
         g_config.has_password = 0; // 无密码
       }
       else {
@@ -323,11 +323,13 @@ void priorAnalyseArgv(int argc, char* argv[]) {
   g_argc = argc - g_option_count;
   strcpy(g_command, argv[1]);
 
-  if (match("cfg"))
+  if (match("cfg")) {
     printConfig();
+    exit(0);
+  }
 
   // 配置通信地址
-  if (match("cfgaddr")) {
+  else if (match("cfgaddr")) {
     checkArgc(3);
     g_config.address = toUInt(argv[2]);
     writeConfig();
