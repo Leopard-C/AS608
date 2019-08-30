@@ -1241,7 +1241,7 @@ bool PS_ReadIndexTable(int* indexList, int size) {
             g_error_code = 0xC1;    // 数组太小
             return false;
           }
-          indexList[nIndex++] = page*256+(i+1)*(j+1)-1;
+          indexList[nIndex++] = page*256 + 8 * i + j;
         } // end if
 
       } // end internel for
