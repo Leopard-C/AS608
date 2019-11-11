@@ -30,8 +30,8 @@
 #include <errno.h>
 #include <unistd.h>
 
+extern AS608 g_as608;
 extern int g_fd;
-extern int g_detect_pin;
 extern int g_verbose;
 extern char  g_error_desc[128];
 extern uchar g_error_code;
@@ -132,11 +132,11 @@ void printConfig() {
 
 // 同步g_config变量内容和其他变量内容
 void asyncConfig() {
-  g_detect_pin   = g_config.detect_pin;
-  g_has_password = g_config.has_password;
-  PS_PASSWORD    = g_config.password;
-  PS_CHIP_ADDR   = g_config.address;
-  PS_BAUD_RATE   = g_config.baudrate;
+  g_as608.detect_pin   = g_config.detect_pin;
+  g_as608.has_password = g_config.has_password;
+  g_as608.password     = g_config.password;
+  g_as608.chip_addr    = g_config.address;
+  g_as608.baud_rate    = g_config.baudrate;
 }
 
 // 读取配置文件
@@ -288,7 +288,7 @@ bool match(const char* str) {
 // TODO
 bool reset(int seconds) {
   for (int i = 0; i < 1000*seconds; ++i) {
-    if (digitalRead(g_detect_pin) == LOW) {
+    if (digitalRead(g_as608.detect_pin) == LOW) {
       return true;
     }
 
@@ -420,7 +420,7 @@ void analyseArgv(int argc, char* argv[]) {
 
     int count = 0;
     printf("Please put your finger on the moudle\n");
-    while (digitalRead(g_detect_pin) == LOW) {
+    while (digitalRead(g_as608.detect_pin) == LOW) {
       delay(1);
       if ((count++) > 5000) {
         printf("Not detected the finger!\n");
@@ -438,17 +438,17 @@ void analyseArgv(int argc, char* argv[]) {
     checkArgc(2);
     PS_GetAllInfo() || PS_Exit();
 
-    printf("Product SN:        %s\n", PS_PRODUCT_SN);
-    printf("Software version:  %s\n", PS_SOFTWARE_VERSION);
-    printf("Manufacture:       %s\n", PS_MANUFACTURER);
-    printf("Sensor model:      %d\n", PS_MODEL);
-    printf("Sensor name:       %s\n", PS_SENSOR_NAME);
-    printf("Status register:   %d\n", PS_STATUS);
-    printf("Database capacity: %d\n", PS_CAPACITY);
-    printf("Secure level(1-5): %d\n", PS_LEVEL);
-    printf("Device address:    0x%08x\n", PS_CHIP_ADDR);
-    printf("Packet size:       %u bytes\n", PS_PACKET_SIZE);
-    printf("Baud rate:         %d\n", PS_BAUD_RATE);
+    printf("Product SN:        %s\n", g_as608.product_sn);
+    printf("Software version:  %s\n", g_as608.software_version);
+    printf("Manufacture:       %s\n", g_as608.manufacture);
+    printf("Sensor model:      %d\n", g_as608.model);
+    printf("Sensor name:       %s\n", g_as608.sensor_name);
+    printf("Status register:   %d\n", g_as608.status);
+    printf("Database capacity: %d\n", g_as608.capacity);
+    printf("Secure level(1-5): %d\n", g_as608.secure_level);
+    printf("Device address:    0x%08x\n", g_as608.chip_addr);
+    printf("Packet size:       %u bytes\n", g_as608.packet_size);
+    printf("Baud rate:         %d\n", g_as608.baud_rate);
   }
 
   else if (match("empty")) {
@@ -542,7 +542,7 @@ void analyseArgv(int argc, char* argv[]) {
     // 检测手指是否存在
     int count = 0;
     printf("Please put your finger on the moudle\n");
-    while (digitalRead(g_detect_pin) == LOW) {
+    while (digitalRead(g_as608.detect_pin) == LOW) {
       delay(1);
       if ((count++) > 5000) {
         printf("Not detected the finger!\n");
@@ -654,7 +654,7 @@ void analyseArgv(int argc, char* argv[]) {
 
   else if (match("baudrate")) {
     if (g_argc == 2) {
-      printf("%d\n", PS_BAUD_RATE);
+      printf("%d\n", g_as608.baud_rate);
       exit(0);
     }
     else if (g_argc == 3) {
@@ -670,7 +670,7 @@ void analyseArgv(int argc, char* argv[]) {
 
   else if (match("level")) {
     if (g_argc == 2) {
-      printf("%d\n", PS_LEVEL);
+      printf("%d\n", g_as608.secure_level);
       exit(0);
     }
     else if (g_argc == 3) {
@@ -686,7 +686,7 @@ void analyseArgv(int argc, char* argv[]) {
 
   else if (match("packetsize")) {
     if (g_argc == 2) {
-      printf("%d\n", PS_PACKET_SIZE);
+      printf("%d\n", g_as608.packet_size);
       exit(0);
     }
     else if (g_argc == 3) {
@@ -702,14 +702,14 @@ void analyseArgv(int argc, char* argv[]) {
   
   else if (match("address")) {
     if (g_argc == 2) {
-      printf("0x%08x\n", PS_CHIP_ADDR);
+      printf("0x%08x\n", g_as608.chip_addr);
       exit(0);
     }
     else if (g_argc == 3) {
       PS_SetChipAddr(toUInt(argv[2])) || PS_Exit();
       g_config.address = toUInt(argv[2]);
       if (writeConfig())
-        printf("New chip address is 0x%08x\n", PS_CHIP_ADDR);
+        printf("New chip address is 0x%08x\n", g_as608.chip_addr);
     }
     else {
       printf("Command \"address\" accept 1 parameter at most\n");
@@ -725,7 +725,7 @@ void analyseArgv(int argc, char* argv[]) {
     g_config.has_password = 1;
     g_config.password = toUInt(argv[2]);
     if (writeConfig())
-      printf("New password is 0x%08x\n", PS_PASSWORD);
+      printf("New password is 0x%08x\n", g_as608.password);
   }
 
   else if (match("vfypwd")) {

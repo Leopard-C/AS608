@@ -20,7 +20,7 @@
 */
 
 
-#include "./as608.h"
+#include "as608.h"
 
 #include <unistd.h>
 #include <stdlib.h>
@@ -33,12 +33,11 @@
 
 
 /*******************************BEGIN**********************************
- * 全局变量
+ * 全局变量(定义)
 */
+AS608 g_as608;
 int   g_fd;          // 全局变量，文件描述符，即open()函数打开串口的返回值
-int   g_detect_pin;  // 全局变量，GPIO引脚号，检测是模块上否有手指
 int   g_verbose;     // 全局变量，输出信息的详细程度
-int   g_has_password;// 全局变量，是否设置了密码
 char  g_error_desc[128]; // 全局变量，错误代码的含义
 uchar g_error_code;      // 全局变量，模块返回的确认码，如果函数返回值不为true，读取此变量
 
@@ -49,25 +48,6 @@ uchar g_reply[64] = { 0 }; // 模块的应答包
 **********************************END********************************/
 
 
-/********************************BEGIN*******************************
- * 模块参数变量
-*/
-uint PS_STATUS;        // 状态寄存器 0
-uint PS_MODEL;         // 传感器类型 0-15
-uint PS_CAPACITY;      // 指纹容量，300
-uint PS_LEVEL;         // 安全等级 1/2/3/4/5，默认为3
-uint PS_PACKET_SIZE;   // 数据包大小 32/64/128/256 bytes，默认为128
-uint PS_BAUD_RATE;     // 波特率系数 
-
-uint PS_CHIP_ADDR;      // 设备(芯片)地址
-uint PS_PASSWORD;       // 通信密码
-
-char PS_PRODUCT_SN[12];       // 产品型号
-char PS_SOFTWARE_VERSION[12]; // 软件版本号
-char PS_MANUFACTURER[12];     // 厂家名称
-char PS_SENSOR_NAME[12];      // 传感器名称
-/*
- *********************************END*****************************/
 
 /******************************************************************************
  *
@@ -230,10 +210,10 @@ void PrintProcess(int done, int all) {
  *     validDataSize表示有效的数据大小，不包括数据头、检校和部分
 */
 bool RecvPacket(uchar* pData, int validDataSize) {
-  if (PS_PACKET_SIZE <= 0)
+  if (g_as608.packet_size <= 0)
     return false;
-  int realPacketSize = 11 + PS_PACKET_SIZE; // 实际每个数据包的大小
-  int realDataSize = validDataSize * realPacketSize / PS_PACKET_SIZE;  // 总共需要接受的数据大小
+  int realPacketSize = 11 + g_as608.packet_size; // 实际每个数据包的大小
+  int realDataSize = validDataSize * realPacketSize / g_as608.packet_size;  // 总共需要接受的数据大小
 
   uchar readBufTmp[8] = { 0 };  // 每次read至多8个字节，追加到readBuf中
   uchar* readBuf = (uchar*)malloc(realPacketSize); // 收满realPacketSize字节，说明收到了一个完整的数据包，追加到pData中
@@ -286,8 +266,8 @@ bool RecvPacket(uchar* pData, int validDataSize) {
           return false;
         }
 
-        memcpy(pData+offset, readBuf+9, PS_PACKET_SIZE);
-        offset += PS_PACKET_SIZE;
+        memcpy(pData+offset, readBuf+9, g_as608.packet_size);
+        offset += g_as608.packet_size;
         readBufSize = 0;
 
         // 收到 结束包
@@ -331,31 +311,31 @@ bool RecvPacket(uchar* pData, int validDataSize) {
  *     validDataSize表示有效的数据大小，不包括数据头、检校和部分
 */
 bool SendPacket(uchar* pData, int validDataSize) {
-  if (PS_PACKET_SIZE <= 0)
+  if (g_as608.packet_size <= 0)
     return false;
-  if (validDataSize % PS_PACKET_SIZE != 0) {
+  if (validDataSize % g_as608.packet_size != 0) {
     g_error_code = 0xC8;
     return false;
   }
-  int realPacketSize = 11 + PS_PACKET_SIZE; // 实际每个数据包的大小
-  int realDataSize = validDataSize * realPacketSize / PS_PACKET_SIZE;  // 总共需要发送的数据大小
+  int realPacketSize = 11 + g_as608.packet_size; // 实际每个数据包的大小
+  int realDataSize = validDataSize * realPacketSize / g_as608.packet_size;  // 总共需要发送的数据大小
 
   // 构造数据包
   uchar* writeBuf = (uchar*)malloc(realPacketSize);
   writeBuf[0] = 0xef;  // 包头
   writeBuf[1] = 0x01;  // 包头
-  Split(PS_CHIP_ADDR, writeBuf+2, 4);  // 芯片地址
-  Split(PS_PACKET_SIZE+2, writeBuf+7, 2);  // 包长度
+  Split(g_as608.chip_addr, writeBuf+2, 4);  // 芯片地址
+  Split(g_as608.packet_size+2, writeBuf+7, 2);  // 包长度
 
   int offset     = 0;  // 已发送的有效数据
   int writeCount = 0;  // 已发送的实际数据
 
   while (true) {
     // 填充数据区域
-    memcpy(writeBuf+9, pData+offset, PS_PACKET_SIZE);
+    memcpy(writeBuf+9, pData+offset, g_as608.packet_size);
 
     // 数据包 标志
-    if (offset + PS_PACKET_SIZE < validDataSize)
+    if (offset + g_as608.packet_size < validDataSize)
       writeBuf[6] = 0x02;  // 结束包(最后一个数据包)
     else
       writeBuf[6] = 0x08;  // 普通数据包
@@ -366,7 +346,7 @@ bool SendPacket(uchar* pData, int validDataSize) {
     // 发送数据包
     write(g_fd, writeBuf, realPacketSize);
 
-    offset     += PS_PACKET_SIZE;
+    offset     += g_as608.packet_size;
     writeCount += realPacketSize;
 
     // 是否输出详细信息
@@ -405,7 +385,7 @@ bool SendPacket(uchar* pData, int validDataSize) {
 int GenOrder(uchar orderCode, const char* fmt, ...) {
   g_order[0] = 0xef;        // 包头，0xef
   g_order[1] = 0x01;
-  Split(PS_CHIP_ADDR, g_order+2, 4);    // 芯片地址，需要使用PS_Setup()初始化设置
+  Split(g_as608.chip_addr, g_order+2, 4);    // 芯片地址，需要使用PS_Setup()初始化设置
   g_order[6] = 0x01;        // 包标识，0x01代表是指令包，0x02数据包，0x08结束包(最后一个数据包)
   g_order[9] = orderCode;   // 指令
 
@@ -495,19 +475,19 @@ int GenOrder(uchar orderCode, const char* fmt, ...) {
  *   并不改变芯片地址
 */
 bool PS_Setup(uint chipAddr, uint password) {
-  PS_CHIP_ADDR = chipAddr;
-  PS_PASSWORD  = password;
+  g_as608.chip_addr = chipAddr;
+  g_as608.password  = password;
 
   if (g_verbose == 1)
     printf("-------------------------Initializing-------------------------\n");
   //验证密码
-  if (g_has_password) {
+  if (g_as608.has_password) {
     if (!PS_VfyPwd(password))
      return false;
   }
 
   // 获取数据包大小、波特率等
-  if (PS_ReadSysPara() && PS_PACKET_SIZE > 0) {
+  if (PS_ReadSysPara() && g_as608.packet_size > 0) {
     if (g_verbose == 1)
       printf("-----------------------------Done-----------------------------\n");
     return true;
@@ -534,7 +514,8 @@ bool PS_GetImage() {
 
   // 检测是否有指纹
   for (int i = 0; i < 100000; ++i) {
-    if (digitalRead(g_detect_pin) == HIGH) {
+    if (digitalRead(g_as608.detect_pin) == HIGH) {
+      printf("Sending order.. \n");
       // 发送指令包
       SendOrder(g_order, size);
 
@@ -782,12 +763,6 @@ bool PS_UpImage(const char* filename) {
     return false;
   }
 
-  FILE* fp_ = fopen("upimage.dat", "w+");
-  if (!fp_)
-    return false;
-  fwrite(pData,1, 36864, fp_);
-  fclose(fp_);
-  
   // 将pData写入文件中
   FILE* fp = fopen(filename, "w+");
   if (!fp) {
@@ -874,7 +849,22 @@ bool PS_DownImage(const char* filename) {
   }
   fclose(fp);
 
+  //FILE* fpx = fopen("temp.bmp", "wb");
+  //if (!fpx) {
+  //  printf("Error\n");
+  //  return false;
+  //}
+  //fwrite(imageBuf, 1, 74806, fpx);
+  //fclose(fpx);
+  //return true;
+
+  //uchar dataBuf[128*288] = { 0 };
+  //for (uint i = 0, size=128*288; i < size; ++i) {
+  //  dataBuf[i] = imageBuf[1078 + i*2] + (imageBuf[1078 + i*2 + 1] >> 4);
+  //}
+
   // 发送图像的像素数据，偏移量54+1024=1078，大小128*256*2=73728
+  //return SendPacket(dataBuf, 128*288);
   return SendPacket(imageBuf+1078, 73728);
 }
 
@@ -917,7 +907,7 @@ bool PS_Empty() {
 /*
  * 函数名称：PS_WriteReg
  * 说明： 写模块寄存器
- * 参数：none(参数保存到PS_CHIP_ADDR, PS_PACKET_SIZE, PS_BPS等系统变量中)
+ * 参数：none(参数保存到g_as608.chip_addr, g_as608.packet_size, PS_BPS等系统变量中)
  * 返回值 ：true(成功)，false(出现错误)，确认码赋值给g_error_code
  *   确认码=00H 表示 OK；
  *   确认码=01H 表示收包有错；
@@ -939,7 +929,7 @@ bool PS_WriteReg(int regID, int value) {
 /*
  * 函数名称：PS_ReadSysPara
  * 说明：读取模块的基本参数（波特率，包大小等）。
- * 参数：none(参数保存到PS_CHIP_ADDR, PS_PACKET_SIZE, PS_BPS等系统变量中)
+ * 参数：none(参数保存到g_as608.chip_addr, g_as608.packet_size, PS_BPS等系统变量中)
  * 返回值 ：true(成功)，false(出现错误)，确认码赋值给g_error_code
  *   确认码=00H 表示 OK；
  *   确认码=01H 表示收包有错；
@@ -950,15 +940,15 @@ bool PS_ReadSysPara() {
   
   return (RecvReply(g_reply, 28) &&
           Check(g_reply, 28) &&
-          Merge(&PS_STATUS,       g_reply+10, 2) &&
-          Merge(&PS_MODEL,        g_reply+12, 2) && 
-          Merge(&PS_CAPACITY,     g_reply+14, 2) &&
-          Merge(&PS_LEVEL,        g_reply+16, 2) &&
-          Merge(&PS_CHIP_ADDR, g_reply+18, 4) &&
-          Merge(&PS_PACKET_SIZE,  g_reply+22, 2) &&
-          Merge(&PS_BAUD_RATE,    g_reply+24, 2) &&
-          (PS_PACKET_SIZE = 32 * (int)pow(2, PS_PACKET_SIZE)) &&
-          (PS_BAUD_RATE *= 9600)
+          Merge(&g_as608.status,       g_reply+10, 2) &&
+          Merge(&g_as608.model,        g_reply+12, 2) && 
+          Merge(&g_as608.capacity,     g_reply+14, 2) &&
+          Merge(&g_as608.secure_level, g_reply+16, 2) &&
+          Merge(&g_as608.chip_addr,    g_reply+18, 4) &&
+          Merge(&g_as608.packet_size,  g_reply+22, 2) &&
+          Merge(&g_as608.baud_rate,    g_reply+24, 2) &&
+          (g_as608.packet_size = 32 * (int)pow(2, g_as608.packet_size)) &&
+          (g_as608.baud_rate *= 9600)
          );
 }
 
@@ -1020,8 +1010,8 @@ bool PS_SetPwd(uint pwd) {   // 0x00 ~ 0xffffffff
   // 接收数据，核对确认码和检校和
   return (RecvReply(g_reply, 12) && 
           Check(g_reply, 12) &&
-          (g_has_password = 1) &&
-          ((PS_PASSWORD = pwd) || true)); // 防止pwd=0x00
+          (g_as608.has_password = 1) &&
+          ((g_as608.password = pwd) || true)); // 防止pwd=0x00
 }
 
 
@@ -1080,7 +1070,7 @@ bool PS_SetChipAddr(uint addr) {
   // 接收数据，核对确认码和检校和
   return (RecvReply(g_reply, 12) && 
           Check(g_reply, 12) && 
-          ((PS_CHIP_ADDR = addr) || true)); // 防止addr=0x00
+          ((g_as608.chip_addr = addr) || true)); // 防止addr=0x00
 }
 
 /*
@@ -1109,10 +1099,10 @@ bool PS_ReadINFpage(uchar* pInfo, int pInfoSize/*>=512*/) {
   if (!RecvPacket(pInfo, 512))
     return false;
   
-  memcpy(PS_PRODUCT_SN,       pInfo+28, 8);
-  memcpy(PS_SOFTWARE_VERSION, pInfo+36, 8);
-  memcpy(PS_MANUFACTURER,     pInfo+44, 8);
-  memcpy(PS_SENSOR_NAME,      pInfo+52, 8);
+  memcpy(g_as608.product_sn,       pInfo+28, 8);
+  memcpy(g_as608.software_version, pInfo+36, 8);
+  memcpy(g_as608.manufacture,      pInfo+44, 8);
+  memcpy(g_as608.sensor_name,      pInfo+52, 8);
 
   return true;
 }
@@ -1285,11 +1275,11 @@ bool PS_SetPacketSize(int size) {
 }
 
 /*
- * 获取模块的详细信息，并赋值给相应全局变量，PS_PACKET_SIZE、PS_LEVEL等
+ * 获取模块的详细信息，并赋值给相应全局变量，g_as608.packet_size、PS_LEVEL等
 */
 bool PS_GetAllInfo() {
   uchar buf[512] = { 0 };
-  if (PS_ReadSysPara() && PS_PACKET_SIZE > 0 && PS_ReadINFpage(buf, 512)) {
+  if (PS_ReadSysPara() && g_as608.packet_size > 0 && PS_ReadINFpage(buf, 512)) {
     return true;
   }
   else {
@@ -1367,7 +1357,7 @@ char* PS_GetErrorDesc() {
   case 0xC5: strcpy(g_error_desc, "Packet size not in 32, 64, 128 or 256"); break;
   case 0xC6: strcpy(g_error_desc, "Array size is to big");break;
   case 0xC7: strcpy(g_error_desc, "Setup failed! Please retry again later"); break;
-  case 0xC8: strcpy(g_error_desc, "The size of the data to send must be an integral multiple of the PS_PACKET_SIZE"); break;
+  case 0xC8: strcpy(g_error_desc, "The size of the data to send must be an integral multiple of the g_as608.packet_size"); break;
   case 0xC9: strcpy(g_error_desc, "The size of the fingerprint image is not 74806bytes(about73.1kb)");break;
   case 0xCA: strcpy(g_error_desc, "Error while reading local fingerprint imgae"); break;
   

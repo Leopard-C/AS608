@@ -29,38 +29,35 @@
 typedef unsigned char uchar;
 typedef unsigned int uint;
 
+typedef struct AS608_Module_Info {
+  uint status;      // 状态寄存器 0
+  uint model;       // 传感器类型 0-15
+  uint capacity;    // 指纹容量，300
+  uint secure_level;    // 安全等级 1/2/3/4/5，默认为3
+  uint packet_size;     // 数据包大小 32/64/128/256 bytes，默认为128
+  uint baud_rate;       // 波特率系数 
+  uint chip_addr;       // 设备(芯片)地址                  
+  uint password;        // 通信密码
+  char product_sn[12];        // 产品型号
+  char software_version[12];  // 软件版本号
+  char manufacture[12];       // 厂家名称
+  char sensor_name[12];       // 传感器名称
+
+  uint detect_pin;      // AS608的WAK引脚连接的树莓派GPIO引脚号
+  uint has_password;    // 是否有密码
+} AS608;
+
+
 /*******************************BEGIN**********************************
  * 全局变量
 */
-extern int   g_fd;          // 全局变量，文件描述符，即open()函数打开串口的返回值
-extern int   g_detect_pin;  // 全局变量，GPIO引脚号，检测是模块上否有手指
-extern int   g_verbose;     // 全局变量，输出信息的详细程度
-extern int   g_has_password;// 全局变量，是否设置了密码
-extern char  g_error_desc[128]; // 全局变量，错误代码的含义
-extern uchar g_error_code;      // 全局变量，模块返回的确认码，如果函数返回值不为true，读取此变量
+extern AS608 g_as608;
+extern int   g_fd;          // 文件描述符，即open()函数打开串口的返回值
+extern int   g_verbose;     // 输出信息的详细程度
+extern char  g_error_desc[128]; // 错误代码的含义
+extern uchar g_error_code;      // 模块返回的确认码，如果函数返回值不为true，读取此变量
 /*
 **********************************END********************************/
-
-
-/********************************BEGIN*******************************
- * 模块参数变量
-*/
-extern uint PS_STATUS;        // 状态寄存器 0
-extern uint PS_MODEL;         // 传感器类型 0-15
-extern uint PS_CAPACITY;      // 指纹容量，300
-extern uint PS_LEVEL;         // 安全等级 1/2/3/4/5，默认为3
-extern uint PS_PACKET_SIZE;   // 数据包大小 32/64/128/256 bytes，默认为128
-extern uint PS_BAUD_RATE;     // 波特率系数 
-
-extern uint PS_CHIP_ADDR;      // 设备(芯片)地址
-extern uint PS_PASSWORD;       // 通信密码
- 
-extern char PS_PRODUCT_SN[12];       // 产品型号
-extern char PS_SOFTWARE_VERSION[12]; // 软件版本号
-extern char PS_MANUFACTURER[12];     // 厂家名称
-extern char PS_SENSOR_NAME[12];      // 传感器名称
-/*
- *********************************END*****************************/
 
 
 #ifdef __cplusplus
