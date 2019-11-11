@@ -33,7 +33,33 @@ AS608模块内部内置了手指探测电路，用户可读取状态引脚(WAK)�
 
 把本项目根目录下的`as608.h`和`as608.c`拷贝到你的程序目录下即可。
 
-### 1.  全局变量
+### 1. 模块参数变量
+
+```C++
+// typedef unsigned int uint;
+
+typedef struct AS608_Module_Info {
+  uint status;      // 状态寄存器 0
+  uint model;       // 传感器类型 0-15
+  uint capacity;    // 指纹容量，300
+  uint secure_level;    // 安全等级 1/2/3/4/5，默认为3
+  uint packet_size;     // 数据包大小 32/64/128/256 bytes，默认为128
+  uint baud_rate;       // 波特率系数 
+  uint chip_addr;       // 设备(芯片)地址                  
+  uint password;        // 通信密码
+  char product_sn[12];        // 产品型号
+  char software_version[12];  // 软件版本号
+  char manufacture[12];       // 厂家名称
+  char sensor_name[12];       // 传感器名称
+
+  uint detect_pin;      // AS608的WAK引脚连接的树莓派GPIO引脚号
+  uint has_password;    // 是否有密码
+} AS608;
+
+extern AS608 g_as608;
+```
+
+### 2.  全局变量
 
 使用树莓派的硬件进行串口通信，需要额外配置一下(关闭板载蓝牙功能等)，参考 <a href="https://blog.csdn.net/guet_gjl/article/details/85164072" target="_blank">CSDN-树莓派利用串口进行通信</a>。
 
@@ -43,14 +69,12 @@ AS608模块内部内置了手指探测电路，用户可读取状态引脚(WAK)�
 g_fd = serialOpen("/dev/ttyAMA0", 9600);  // 9600是波特率
 ```
 
-+ `int g_detect_pin`：模块的状态引脚(WAK)与树莓派的哪个可编程GPIO端口相连接。
-
 ```C
-pinMode(g_detect_pin, INPUT);	// 将该GPIO端口设置为输入模式
+pinMode(g_as608.detect_pin, INPUT);	// 将该GPIO端口设置为输入模式
 
 while (1) {
      // 读取引脚的信号
-    if (digitalRead(g_detect_pin) == HIGH) { 
+    if (digitalRead(g_as608.detect_pin) == HIGH) { 
         // do something.
         // PS_GetImage();
     }
@@ -60,31 +84,9 @@ while (1) {
 
 + `int g_verbose`：函数工作过程中输出到屏幕上信息量。为`0`则显示的很少，主要是传输数据包时会显示进度条。为`1`则显示详细信息，如发送的指令包内容和接收的指令包内容等。为`其他`数值则不显示任何信息。
 
-+ `int g_has_password`：与模块通信是否需要密码。
-
 + `int g_error_code`：模块返回的错误码 以及 自定义的错误代码。
 
 + `char g_error_desc[128]`：错误代码 的含义。可通过`char* PS_GetErrorDesc()`函数获得。
-
-### 2. 模块参数变量
-
-```C
-// typedef unsigned int uint;
-uint PS_STATUS;        // 状态寄存器 0
-uint PS_MODEL;         // 传感器类型 0-15
-uint PS_CAPACITY;      // 指纹容量，300
-uint PS_LEVEL;         // 安全等级 1/2/3/4/5，默认为3
-uint PS_PACKET_SIZE;   // 数据包大小 32/64/128/256 bytes，默认为128
-uint PS_BAUD_RATE;     // 波特率系数 
-
-uint PS_CHIP_ADDR;      // 设备(芯片)地址  0x00000000 ~ 0xffffffff
-uint PS_PASSWORD;       // 通信密码  0x00000000 ~ 0xffffffff
-
-char PS_PRODUCT_SN[12];       // 产品型号
-char PS_SOFTWARE_VERSION[12]; // 软件版本号
-char PS_MANUFACTURER[12];     // 厂家名称
-char PS_SENSOR_NAME[12];      // 传感器名称
-```
 
 ### 3. 函数
 
@@ -106,15 +108,14 @@ char PS_SENSOR_NAME[12];      // 传感器名称
 
 // 声明全局变量
 extern int g_fd;
-extern int g_detect_pin;
 extern int g_verbose;
 extern char  g_error_desc[];
 extern uchar g_error_code;
 
 int main() {
     // 给全局变量赋值
-    g_detect_pin = 1; 
-    g_has_password = 0;  // 没有密码
+    g_as608.detect_pin = 1; 
+    g_as608.has_password = 0;  // 没有密码
     g_verbose = 0;       // 显示少量输出信息
     
     // 初始化wiringPi库
@@ -122,7 +123,7 @@ int main() {
         return 1;
     
     // 设置g_detect_pin引脚为输入模式
-    pinMode(g_detect_pin, INPUT);
+    pinMode(g_as608.detect_pin, INPUT);
     
     // 打开串口
     if ((g_fd = serialOpen("/dev/ttyAMA0", 9600)) < 0)
@@ -152,7 +153,7 @@ int main() {
 // @state 检测手指存在还是不存在，HIGH表示阻塞至手指存在，LOW表示阻塞至手指不存在
 bool detectFinger(int blockTime, int state) {
     for (int i = 0; i < blockTime * 100; ++i) {
-        if (digitalRead(g_detect_pin) == state) {
+        if (digitalRead(g_as608.detect_pin) == state) {
             return true;
         }
         delay(10);	// 等待1ms
@@ -205,8 +206,6 @@ bool newFingerprint(int pageID) {
     return true;
 }
 ```
-
-
 
 ## 三、命令行程序
 
