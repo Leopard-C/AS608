@@ -49,6 +49,10 @@ void asyncConfig();
 void priorAnalyseArgv(int argc, char* argv[]);
 void analyseArgv(int argc, char* argv[]);
 
+bool waitUntilDetectFinger(int wait_time);   // 阻塞至检测到手指，最长阻塞wait_time毫秒
+bool waitUntilNotDetectFinger(int wait_time);
+
+
 // 因为as608.h内的函数执行失败而退出程序
 bool PS_Exit() {
   printf("ERROR! code=%02X, desc=%s\n", g_error_code, PS_GetErrorDesc());
@@ -118,149 +122,6 @@ int main(int argc, char *argv[]) //int serialOpen (const char *device, const int
  *
 ***************************************************************/
 
-// 打印配置文件内容到屏幕上
-void printConfig() {
-  printf("address=%08x\n", g_config.address);
-  if (g_config.has_password)
-    printf("password=%08x\n", g_config.password);
-  else
-    printf("password=none(no password)\n");
-  printf("serial_file=%s\n",   g_config.serial);
-  printf("baudrate=%d\n",   g_config.baudrate);
-  printf("detect_pin=%d\n",   g_config.detect_pin);
-}
-
-// 同步g_config变量内容和其他变量内容
-void asyncConfig() {
-  g_as608.detect_pin   = g_config.detect_pin;
-  g_as608.has_password = g_config.has_password;
-  g_as608.password     = g_config.password;
-  g_as608.chip_addr    = g_config.address;
-  g_as608.baud_rate    = g_config.baudrate;
-}
-
-// 读取配置文件
-bool readConfig() {
-  FILE* fp;
-
-  // 获取用户主目录
-  char filename[256] = { 0 };
-  sprintf(filename, "%s/.fpconfig", getenv("HOME"));
-  
-  // 主目录下的配置文件
-  if (access(filename, F_OK) == 0) { 
-    trimSpaceInFile(filename);
-    fp = fopen(filename, "r");
-  }
-  else {
-    // 如果配置文件不存在，就在主目录下创建配置文件，并写入默认配置
-    // 设置默认值
-    g_config.address = 0xffffffff;
-    g_config.password= 0x00000000;
-    g_config.has_password = 0;
-    g_config.baudrate = 9600;
-    g_config.detect_pin = 1; 
-    strcpy(g_config.serial, "/dev/ttyAMA0");
-
-    writeConfig();
-
-    printf("Please config the address and password in \"~/.fpconfig\"\n");
-    printf("  fp cfgaddr   0x[address]\n");
-    printf("  fp cfgpwd    0x[password]\n");
-    printf("  fp cfgserial [serialFile]\n");
-    printf("  fp cfgbaud   [rate]\n");
-    printf("  fp cfgpin    [GPIO_pin]\n");
-    return false;
-  }
-
-  char key[16] = { 0 };
-  char value[16] = { 0 };
-  char line[32] = { 0 };
-
-  char *tmp;
-  while (!feof(fp)) {
-    fgets(line, 32, fp);
-    
-    // 分割字符串，得到key和value
-    if (tmp = strtok(line, "="))
-      trim(tmp, key);
-    else
-      continue;
-    if (tmp = strtok(NULL, "="))
-      trim(tmp, value);
-    else
-      continue;
-    while (!tmp)
-      tmp = strtok(NULL, "=");
-
-    // 如果数值以 0x 开头
-    int offset = 0;
-    if (value[0] == '0' && (value[1] == 'x' || value[1] == 'X'))
-      offset = 2;
-
-    if (strcmp(key, "address") == 0) {
-      g_config.address = toUInt(value+offset);
-    }
-    else if (strcmp(key, "password") == 0) {
-      if (strcmp(value, "none") == 0 || strcmp(value, "false") == 0) {
-        g_config.has_password = 0; // 无密码
-      }
-      else {
-        g_config.has_password = 1; // 有密码
-        g_config.password = toUInt(value+offset);
-      }
-    }
-    else if (strcmp(key, "serial") == 0) {
-      int len = strlen(value);
-      if (value[len-1] == '\n')
-        value[len-1] = 0;
-      strcpy(g_config.serial, value);
-    }
-    else if (strcmp(key, "baudrate") == 0) {
-      g_config.baudrate = toInt(value);
-    }
-    else if (strcmp(key, "detect_pin") == 0) {
-      g_config.detect_pin = toInt(value);
-    }
-    else {
-      printf("Unknown key:%s\n", key);
-      fclose(fp);
-      return false;
-    }
-
-  } // end while(!feof(fp))
-
-  asyncConfig();
-
-  fclose(fp);
-  return true;
-}
-
-/*
- * 写配置文件
-*/
-bool writeConfig() {
-  // 获取用户主目录
-  char filename[256] = { 0 };
-  sprintf(filename, "%s/.fpconfig", getenv("HOME"));
-  
-  FILE* fp = fp = fopen(filename, "w+");
-  if (!fp) {
-    printf("Write config file error!\n");
-    exit(0);
-  }
-
-  fprintf(fp, "address=0x%08x\n", g_config.address);
-  if (g_config.has_password)
-    fprintf(fp, "password=0x%08x\n", g_config.password);
-  else
-    fprintf(fp, "password=none\n");
-  fprintf(fp, "baudrate=%d\n", g_config.baudrate);
-  fprintf(fp, "detect_pin=%d\n", g_config.detect_pin);
-  fprintf(fp, "serial=%s\n", g_config.serial);
-
-  fclose(fp);
-}
 
 // 检查参数数量是否正确是否
 bool checkArgc(int argcNum) {
@@ -278,25 +139,7 @@ bool checkArgc(int argcNum) {
 
 // 匹配argv[1], 即g_command
 bool match(const char* str) {
-  if (strcmp(str, g_command) == 0)
-    return true;
-  else
-    return false;
-}
-
-// 重置电阻屏检测，防止用户两次录指纹之间没有拿开手指
-// TODO
-bool reset(int seconds) {
-  for (int i = 0; i < 1000*seconds; ++i) {
-    if (digitalRead(g_as608.detect_pin) == LOW) {
-      return true;
-    }
-
-    // 如果seconds秒内，没有检测到指纹，返回false
-    usleep(1000);
-  }
-
-  return false;
+  return strcmp(str, g_command) == 0;
 }
 
 // 需要优先解析的命令，如配置文件的修改、选项解析等
@@ -368,41 +211,82 @@ void priorAnalyseArgv(int argc, char* argv[]) {
   }
 }
 
+// 阻塞至检测到手指，最长阻塞wait_time毫秒
+bool waitUntilDetectFinger(int wait_time) {
+  while (true) {
+    if (PS_DetectFinger()) {
+      return true;
+    }
+    else {
+      delay(100);
+      wait_time -= 100;
+      if (wait_time < 0) {
+        return false;
+      }
+    }
+  }
+}
+
+bool waitUntilNotDetectFinger(int wait_time) {
+  while (true) {
+    if (!PS_DetectFinger()) {
+      return true;
+    }
+    else {
+      delay(100);
+      wait_time -= 100;
+      if (wait_time < 0) {
+        return false;
+      }
+    }
+  }
+}
+
+
 // 主处理函数，解析命令
 void analyseArgv(int argc, char* argv[]) {
 
   if (match("add")) {
     checkArgc(3);
     printf("Please put your finger on the module.\n");
-    if (!PS_GetImage()) 
-      PS_Exit();
-    if (!PS_GenChar(1))
-      PS_Exit();
-
-    printf("Please raise your finger\n");
-
-    int try_time = 5;       // 尝试五次录入第二次指纹，如果一直无法和第一次匹配,exit
-    while (try_time--) {
-      // 判断用户是否抬起了手指，
-      for (int i = 0; i < 3; ++i) {
-        if (reset(2)) {
-         printf("Please put your finger again\n");
-         break;
-        }
-        else
-          printf("Plese raise your finger!\n");
-      }
-
+    if (waitUntilDetectFinger(5000)) {
+      delay(500);
       PS_GetImage() || PS_Exit();
-      PS_GenChar(2) || PS_Exit();
+      PS_GenChar(1) || PS_Exit();
+    }
+    else {
+      printf("Error: Didn't detect finger!\n");
+      exit(1);
+    }
 
-      int score = 0;
-      if (!PS_Match(&score))
-        printf("Not matched, raise your finger and put it on again.\n");
-      else {
-        printf("Matched! score=%d\n", score);
-        break;
+    // 判断用户是否抬起了手指，
+    printf("Ok.\nPlease raise your finger!\n");
+    if (waitUntilNotDetectFinger(5000)) {
+      delay(100);
+      printf("Ok.\nPlease put your finger again!\n");
+      // 第二次录入指纹
+      if (waitUntilDetectFinger(5000)) {
+        delay(500);
+        PS_GetImage() || PS_Exit();
+        PS_GenChar(2) || PS_Exit();
       }
+      else {
+        printf("Error: Didn't detect finger!\n");
+        exit(1);
+      }
+    }
+    else {
+      printf("Error! Didn't raise your finger\n");
+      exit(1);
+    }
+
+    int score = 0;
+    if (PS_Match(&score)) {
+      printf("Matched! score=%d\n", score);
+    }
+    else {
+      printf("Not matched, raise your finger and put it on again.\n");
+      exit(1);
     }
     
     if (g_error_code != 0x00)
@@ -787,11 +671,155 @@ void analyseArgv(int argc, char* argv[]) {
     printf("%s\n", buf);
   }
 
-
   else {
     printf("Unknown parameter \"%s\"\n", argv[1]);
     exit(1);
   }
+} // end analyseArgv
+
+
+// 打印配置文件内容到屏幕上
+void printConfig() {
+  printf("address=%08x\n", g_config.address);
+  if (g_config.has_password)
+    printf("password=%08x\n", g_config.password);
+  else
+    printf("password=none(no password)\n");
+  printf("serial_file=%s\n",   g_config.serial);
+  printf("baudrate=%d\n",   g_config.baudrate);
+  printf("detect_pin=%d\n",   g_config.detect_pin);
+}
+
+// 同步g_config变量内容和其他变量内容
+void asyncConfig() {
+  g_as608.detect_pin   = g_config.detect_pin;
+  g_as608.has_password = g_config.has_password;
+  g_as608.password     = g_config.password;
+  g_as608.chip_addr    = g_config.address;
+  g_as608.baud_rate    = g_config.baudrate;
+}
+
+// 读取配置文件
+bool readConfig() {
+  FILE* fp;
+
+  // 获取用户主目录
+  char filename[256] = { 0 };
+  sprintf(filename, "%s/.fpconfig", getenv("HOME"));
+  
+  // 主目录下的配置文件
+  if (access(filename, F_OK) == 0) { 
+    trimSpaceInFile(filename);
+    fp = fopen(filename, "r");
+  }
+  else {
+    // 如果配置文件不存在，就在主目录下创建配置文件，并写入默认配置
+    // 设置默认值
+    g_config.address = 0xffffffff;
+    g_config.password= 0x00000000;
+    g_config.has_password = 0;
+    g_config.baudrate = 9600;
+    g_config.detect_pin = 1; 
+    strcpy(g_config.serial, "/dev/ttyAMA0");
+
+    writeConfig();
+
+    printf("Please config the address and password in \"~/.fpconfig\"\n");
+    printf("  fp cfgaddr   0x[address]\n");
+    printf("  fp cfgpwd    0x[password]\n");
+    printf("  fp cfgserial [serialFile]\n");
+    printf("  fp cfgbaud   [rate]\n");
+    printf("  fp cfgpin    [GPIO_pin]\n");
+    return false;
+  }
+
+  char key[16] = { 0 };
+  char value[16] = { 0 };
+  char line[32] = { 0 };
+
+  char *tmp;
+  while (!feof(fp)) {
+    fgets(line, 32, fp);
+    
+    // 分割字符串，得到key和value
+    if (tmp = strtok(line, "="))
+      trim(tmp, key);
+    else
+      continue;
+    if (tmp = strtok(NULL, "="))
+      trim(tmp, value);
+    else
+      continue;
+    while (!tmp)
+      tmp = strtok(NULL, "=");
+
+    // 如果数值以 0x 开头
+    int offset = 0;
+    if (value[0] == '0' && (value[1] == 'x' || value[1] == 'X'))
+      offset = 2;
+
+    if (strcmp(key, "address") == 0) {
+      g_config.address = toUInt(value+offset);
+    }
+    else if (strcmp(key, "password") == 0) {
+      if (strcmp(value, "none") == 0 || strcmp(value, "false") == 0) {
+        g_config.has_password = 0; // 无密码
+      }
+      else {
+        g_config.has_password = 1; // 有密码
+        g_config.password = toUInt(value+offset);
+      }
+    }
+    else if (strcmp(key, "serial") == 0) {
+      int len = strlen(value);
+      if (value[len-1] == '\n')
+        value[len-1] = 0;
+      strcpy(g_config.serial, value);
+    }
+    else if (strcmp(key, "baudrate") == 0) {
+      g_config.baudrate = toInt(value);
+    }
+    else if (strcmp(key, "detect_pin") == 0) {
+      g_config.detect_pin = toInt(value);
+    }
+    else {
+      printf("Unknown key:%s\n", key);
+      fclose(fp);
+      return false;
+    }
+
+  } // end while(!feof(fp))
+
+  asyncConfig();
+
+  fclose(fp);
+  return true;
+}
+
+/*
+ * 写配置文件
+*/
+bool writeConfig() {
+  // 获取用户主目录
+  char filename[256] = { 0 };
+  sprintf(filename, "%s/.fpconfig", getenv("HOME"));
+  
+  FILE* fp = fp = fopen(filename, "w+");
+  if (!fp) {
+    printf("Write config file error!\n");
+    exit(0);
+  }
+
+  fprintf(fp, "address=0x%08x\n", g_config.address);
+  if (g_config.has_password)
+    fprintf(fp, "password=0x%08x\n", g_config.password);
+  else
+    fprintf(fp, "password=none\n");
+  fprintf(fp, "baudrate=%d\n", g_config.baudrate);
+  fprintf(fp, "detect_pin=%d\n", g_config.detect_pin);
+  fprintf(fp, "serial=%s\n", g_config.serial);
+
+  fclose(fp);
 }
 
 
@@ -802,7 +830,7 @@ void printUsage() {
   printf("\nAvailable Commands:\n");
 
   printf("-------------------------------------------------------------------------\n");
-  printf("  command  | parm     | description\n");
+  printf("  command  | param     | description\n");
   printf("-------------------------------------------------------------------------\n");
   printf("  cfgaddr   [addr]     Config address in local config file\n");
   printf("  cfgpwd    [pwd]      Config password in local config file\n");

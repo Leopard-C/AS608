@@ -95,6 +95,7 @@ extern bool PS_ValidTempleteNum(int* pValidN);
 extern bool PS_ReadIndexTable(int* indexList, int size);
 
 // 封装函数
+extern bool PS_DetectFinger();
 extern bool PS_SetBaudRate(int value);
 extern bool PS_SetSecureLevel(int level);
 extern bool PS_SetPacketSize(int size);

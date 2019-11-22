@@ -513,22 +513,25 @@ bool PS_GetImage() {
   int size = GenOrder(0x01, "");
 
   // 检测是否有指纹
-  for (int i = 0; i < 100000; ++i) {
-    if (digitalRead(g_as608.detect_pin) == HIGH) {
-      printf("Sending order.. \n");
-      // 发送指令包
-      SendOrder(g_order, size);
-
-      // 接收应答包，核对确认码和检校和
-      return (RecvReply(g_reply, 12) && Check(g_reply, 12));
-    }
-    // 100*100000=10e6微秒，即10秒
-    // 如果10秒内，没有检测到指纹，返回false
-    usleep(100);
-  }
+  //for (int i = 0; i < 100000; ++i) {
+  //  if (digitalRead(g_as608.detect_pin) == HIGH) {
+  //    delay(1000);
+  //    printf("Sending order.. \n");
   
-  g_error_code = 0x02;  // 传感器上没有手指
-  return false;
+  // 发送指令包
+  SendOrder(g_order, size);
+
+  // 接收应答包，核对确认码和检校和
+  return (RecvReply(g_reply, 12) && Check(g_reply, 12));
+
+  //}
+  // 100*100000=10e6微秒，即10秒
+  // 如果10秒内，没有检测到指纹，返回false
+  //  usleep(100);
+  // }
+
+  //g_error_code = 0x02;  // 传感器上没有手指
+  //return false;
 }
 
 
@@ -1249,6 +1252,13 @@ bool PS_ReadIndexTable(int* indexList, int size) {
  *   封装的函数，在 as608.h 中有声明
  *
 ******************************************************************/
+
+// 检测指纹是否存在
+// 如果status为HEGH，则模块上有指纹时返回true，没指纹时返回false
+// 如果status为LOW， 则模块上有指纹时返回false，没指纹时返回true
+bool PS_DetectFinger() {
+  return digitalRead(g_as608.detect_pin) == HIGH;
+}
 
 bool PS_SetBaudRate(int value) {
   return PS_WriteReg(4, value / 9600);

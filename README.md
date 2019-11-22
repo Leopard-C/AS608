@@ -69,18 +69,6 @@ extern AS608 g_as608;
 g_fd = serialOpen("/dev/ttyAMA0", 9600);  // 9600是波特率
 ```
 
-```C
-pinMode(g_as608.detect_pin, INPUT);	// 将该GPIO端口设置为输入模式
-
-while (1) {
-     // 读取引脚的信号
-    if (digitalRead(g_as608.detect_pin) == HIGH) { 
-        // do something.
-        // PS_GetImage();
-    }
-    delay(10);	// 等待10ms
-}
-```
 
 + `int g_verbose`：函数工作过程中输出到屏幕上信息量。为`0`则显示的很少，主要是传输数据包时会显示进度条。为`1`则显示详细信息，如发送的指令包内容和接收的指令包内容等。为`其他`数值则不显示任何信息。
 
@@ -106,7 +94,8 @@ while (1) {
 #include <wiringSerial.h>
 #include "as608.h"			// 包含头文件
 
-// 声明全局变量
+// 声明全局变量【定义在as608.c】
+extern AS608 g_as608;
 extern int g_fd;
 extern int g_verbose;
 extern char  g_error_desc[];
@@ -148,17 +137,44 @@ int main() {
 
 检测手指
 
+AS608使用的是电阻屏，可以通过检测`WAK`引脚的电平高低来判断模块上是否有手指。
+
 ```C
-// @blockTime 阻塞时间，单位 秒
-// @state 检测手指存在还是不存在，HIGH表示阻塞至手指存在，LOW表示阻塞至手指不存在
-bool detectFinger(int blockTime, int state) {
-    for (int i = 0; i < blockTime * 100; ++i) {
-        if (digitalRead(g_as608.detect_pin) == state) {
-            return true;
-        }
-        delay(10);	// 等待1ms
-    }
-    return false;
+// as608.h 中有一个封装函数
+// 检测到手指，返回true，否则返回false
+// 前提是配置了 g_as608.detect_pin,  即AS608的WAK引脚
+bool PS_DetectFinger();
+```
+
+在`exanmple/main.c`中有两个函数
+
+```C++
+// 阻塞至检测到手指，最长阻塞wait_time毫秒
+bool waitUntilDetectFinger(int wait_time) {
+	while (true) {
+		if (PS_DetectFinger())
+			return true;
+		else {
+			delay(100);
+			wait_time -= 100;
+			if (wait_time < 0)
+				return false;
+		}
+	}
+}
+
+// 阻塞至检测不到手指，最长阻塞wait_time毫秒
+bool waitUntilDetectFinger(int wait_time) {
+	while (true) {
+		if (PS_DetectFinger())
+			return true;
+		else {
+			delay(100);
+			wait_time -= 100;
+			if (wait_time < 0)
+				return false;
+		}
+	}
 }
 ```
 
@@ -166,44 +182,52 @@ bool detectFinger(int blockTime, int state) {
 
 ```C
 bool newFingerprint(int pageID) {
-    // 第一次采集指纹
-    printf("请放手指\n");
-    if (!detectFinger(5, HIGH)) {
-        printf("没有检测到手指\n");
-        return false;
-    }
-    if (!(PS_GetImage() && PS_GenChar(1))) {
-        printf("发生错误，%s\n", PS_GetErrorDesc());
-        return false;
-    }
-    
-    // 强制使用户抬起手指
-    printf("请抬起手指，再次放上\n");
-    for (int i = 0; i < 5; ++i) {
-        if (detectFinger(2, LOW))
-            break;
-        printf("请抬起手指，再次放上\n");
-    }
-    
-    // 第二次采集指纹
-    if (!detectFinger(5, HIGH)) {
-        printf("没有检测到手指\n");
-        return false;
-    }
-    if (!(PS_GetImage() && PS_GenChar(2))) {
-        printf("发生错误，%s\n", PS_GetErrorDesc());
-        return false;
-    }
-    
-    // 保存指纹
-    int score;
-    if (!(PS_Match(&score) && PS_RegModel() && PS_StoreChar(2, pageID))) {
-        printf("发生错误，%s\n", PS_GetErrorDesc());
-        return false;
-    }
-    
-    printf("new fingerprint saved to pageID=%d\n", pageID);
-    return true;
+	printf("Please put your finger on the module.\n");
+	if (waitUntilDetectFinger(5000)) {
+		delay(500);
+		PS_GetImage();
+		PS_GenChar(1);
+	}
+	else {
+		printf("Error: Didn't detect finger!\n");
+		exit(1);
+	}
+
+	// 判断用户是否抬起了手指，
+	printf("Ok.\nPlease raise your finger!\n");
+	if (waitUntilNotDetectFinger(5000)) {
+		delay(100);
+		printf("Ok.\nPlease put your finger again!\n");
+		// 第二次录入指纹
+		if (waitUntilDetectFinger(5000)) {
+			delay(500);
+			PS_GetImage();
+			PS_GenChar(2);
+		}
+		else {
+			printf("Error: Didn't detect finger!\n");
+			exit(1);
+		}
+	}
+	else {
+		printf("Error! Didn't raise your finger\n");
+		exit(1);
+	}
+
+	int score = 0;
+	if (PS_Match(&score)) {
+		printf("Matched! score=%d\n", score);
+	}
+	else {
+		printf("Not matched, raise your finger and put it on again.\n");
+		exit(1);
+	}
+
+	// 合并特征文件
+	PS_RegModel();
+	PS_StoreChar(2, pageID);
+
+	printf("OK! New fingerprint saved to pageID=%d\n", pageID);
 }
 ```
 
@@ -214,8 +238,8 @@ bool newFingerprint(int pageID) {
 ```bash
 cd example
 make
-alias fp=./fp
-fp  # 执行命令，让程序初始化
+./fp  # 第一次使用，让程序初始化
+alias fp=./fp # 以后可以使用fp，而不用加前缀"./"
 ```
 
 ### 2. 修改配置文件
@@ -250,7 +274,7 @@ Usage:
 
 Available Commands:
 -------------------------------------------------------------------------
-  command  | parm     | description
+  command  | param     | description
 -------------------------------------------------------------------------
   cfgaddr   [addr]     Config address in local config file
   cfgpwd    [pwd]      Config password in local config file
@@ -336,9 +360,10 @@ fp address
 fp address 0xefefefef  # 前缀0x可省略
 
 # 设置密码为0xcc0825cc
-# 注意！ 一旦设置，好像就没法消除，即时重新设为0x00000000，也需要验证密码。(？)
 fp setpwd 0xcc0825cc
 ```
+
+【以下图片以实际执行输出为准，可能有差别之处】
 
 ![usage-1](img/usage-1.png)
 
